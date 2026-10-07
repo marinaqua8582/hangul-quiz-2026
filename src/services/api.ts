@@ -103,14 +103,26 @@ async function callAppsScript<T extends { success?: boolean; ok?: boolean; error
   let response: Response;
   try {
     // Google Apps Script Web App requires text/plain body to prevent CORS preflight OPTIONS blockage
-    response = await fetch(url, {
+    const isDashboard = actionName === 'getDashboard';
+    const requestId = isDashboard ? crypto.randomUUID() : '';
+    const send = (attempt: number) => fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(isDashboard ? { ...payload, requestId: `${requestId}-${attempt}` } : payload),
       redirect: 'follow',
+      ...(isDashboard ? { cache: 'no-store' as const } : {}),
     });
+    if (isDashboard) console.log(`[AppsScript] action=getDashboard request=${requestId} tokenPresent=${!!payload.token}`);
+    response = await send(1);
+    // ContentService serves JSON through a temporary googleusercontent redirect.
+    // Retry only this read-only action, and only a 404 from that response host.
+    if (isDashboard && response.status === 404 && new URL(response.url).hostname === 'script.googleusercontent.com') {
+      console.warn(`[AppsScript] action=getDashboard request=${requestId} redirect404=true retry=1`);
+      response = await send(2);
+    }
+    if (isDashboard) console.log(`[AppsScript] action=getDashboard request=${requestId} status=${response.status} redirected=${response.redirected}`);
   } catch (netErr: unknown) {
     console.error(`[AppsScript] action=${actionName} network error:`, netErr);
     throw new Error(netErr instanceof Error ? netErr.message : '네트워크 요청 실패');
@@ -335,7 +347,10 @@ export async function getDashboard(params: {
   class?: number | string | 'all';
   classNum?: number | string | 'all';
 }): Promise<DashboardResponse> {
-  const token = params.token || sessionStorage.getItem('ADMIN_SESSION_TOKEN') || '';
+  const token = params.token ?? sessionStorage.getItem('ADMIN_SESSION_TOKEN') ?? '';
+  if (!token.trim()) {
+    return { success: false, ok: false, error: '관리자 인증이 필요합니다. 다시 로그인해 주세요.', totalCount: 0, students: [] };
+  }
   const classVal = params.class !== undefined ? params.class : params.classNum;
 
   const gradeStr = params.grade === 'all' || !params.grade ? '' : String(params.grade).replace(/[^0-9]/g, '').trim();

@@ -13,10 +13,10 @@ function moduleFrom(path, dependencies, extra = {}) {
 }
 const ranks = moduleFrom('src/data/ranks.ts', {});
 const storage = {getItem(){return null;},setItem(){},removeItem(){}};
-let response, calls=[];
+let response, calls=[], transport=[];
 const api = moduleFrom('src/services/api.ts', {'../data/ranks.ts':ranks}, {
-  localStorage:storage,sessionStorage:storage,
-  fetch:async(url, options)=>{calls.push({url,payload:JSON.parse(options.body)});return {ok:true,status:200,text:async()=>JSON.stringify(response)};}
+  localStorage:storage,sessionStorage:storage,crypto,URL,
+  fetch:async(url, options)=>{calls.push({url,payload:JSON.parse(options.body),options});return {ok:true,status:200,url,redirected:true,text:async()=>JSON.stringify(response),...transport.shift()};}
 });
 const creds={grade:'2',class:'5',number:'25',name:'김과학'};
 async function frontendTests(){
@@ -29,6 +29,19 @@ async function frontendTests(){
   response={success:true,participantCount:2,students:[{...creds,score:45,rankTitle:'한글 학동'},{...creds,number:'26',name:'이삼진',score:100,rankTitle:'한글 대왕'}]};
   const dashboard=await api.getDashboard({token:'test',grade:2,class:5});
   assert.equal(dashboard.totalCount,2);assert.equal(dashboard.students[0].studentKey,'2-5-25');assert.equal(dashboard.students[1].classNum,5);
+  let before=calls.length;
+  transport=[{ok:false,status:404,url:'https://script.googleusercontent.com/macros/echo?test-only=1'},{}];
+  assert.equal((await api.getDashboard({token:'test',grade:2,class:5})).success,true);
+  const retried=calls.slice(before);assert.equal(retried.length,2);
+  assert(retried.every(call=>call.options.cache==='no-store'&&call.payload.token==='test'&&call.payload.grade==='2'&&call.payload.class==='5'));
+  assert.notEqual(retried[0].payload.requestId,retried[1].payload.requestId);
+  before=calls.length;await api.getDashboard({token:''});assert.equal(calls.length,before);
+  before=calls.length;transport=[{ok:false,status:404,url:'https://script.google.com/macros/s/test/exec'}];
+  assert.equal((await api.getDashboard({token:'test'})).success,false);assert.equal(calls.length,before+1);
+  before=calls.length;transport=[{ok:false,status:404,url:'https://script.googleusercontent.com/macros/echo?test-only=1'},{ok:false,status:404,url:'https://script.googleusercontent.com/macros/echo?test-only=2'}];
+  assert.equal((await api.getDashboard({token:'test'})).success,false);assert.equal(calls.length,before+2);
+  before=calls.length;transport=[{ok:false,status:404,url:'https://script.googleusercontent.com/macros/echo?test-only=1'}];
+  await api.submitQuiz({...creds,studentKey:'2-5-25',answers:{},quizStartedAt:''});assert.equal(calls.length,before+1);
   assert(calls.every(c=>c.url.endsWith('/exec')));
   assert(!calls.some(c=>['saveProgress','loadProgress'].includes(c.payload.action)));
   response={success:true,status:'submitted'};assert.equal((await api.loginStudent(creds)).success,false);
