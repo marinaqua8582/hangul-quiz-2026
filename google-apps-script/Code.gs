@@ -1525,6 +1525,21 @@ function repairAuthorizedTestStudents() {
         sheet.getRange(rowNumber, 1).setNumberFormat('@').setValue(String(key));
         repaired++;
       }
+      if (duplicates.length) {
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        let backup = ss.getSheetByName('AuthorizedTestCleanupBackup');
+        if (!backup) {
+          backup = ss.insertSheet('AuthorizedTestCleanupBackup');
+          backup.appendRow(['sourceSheet', 'sourceRow', 'studentKey', 'backupAt', 'rowJson']);
+        }
+        duplicates.forEach(function(rowNumber) {
+          const testRow = sheet.getRange(rowNumber, 1, 1, HEADERS[sheetName.toUpperCase()].length).getValues()[0];
+          const backupRow = backup.getLastRow() + 1;
+          backup.getRange(backupRow, 3).setNumberFormat('@');
+          backup.getRange(backupRow, 1, 1, 5).setValues([[sheetName, rowNumber, studentKeyFromRow_(testRow), new Date().toISOString(), JSON.stringify(testRow)]]);
+        });
+        SpreadsheetApp.flush();
+      }
       duplicates.sort((a, b) => b - a).forEach(row => sheet.deleteRow(row));
       summary[sheetName] = {repaired: repaired, removedTestDuplicates: duplicates.length};
     });
@@ -1534,3 +1549,61 @@ function repairAuthorizedTestStudents() {
   } finally { lock.releaseLock(); }
 }
 
+// Reset only the second test account, with a recoverable test-only backup.
+function resetAuthorizedSecondTestStudent() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  const summary = {};
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let backup = ss.getSheetByName('AuthorizedTestCleanupBackup');
+    if (!backup) { backup = ss.insertSheet('AuthorizedTestCleanupBackup'); backup.appendRow(['sourceSheet','sourceRow','studentKey','backupAt','rowJson']); }
+    [SHEETS.PROGRESS, SHEETS.SUBMISSIONS].forEach(function(sheetName) {
+      const sheet = getSheet_(sheetName);
+      const count = sheet.getLastRow() - 1;
+      if (count < 1) return;
+      const identifiers = sheet.getRange(2, 1, count, 4).getValues();
+      const targets = [];
+      identifiers.forEach(function(row, index) {
+        if (studentKeyFromRow_(row) !== '2-5-26') return;
+        const rowNumber = index + 2;
+        if (normalizeName_(sheet.getRange(rowNumber, 5).getValue()) !== '이삼진') return;
+        const testRow = sheet.getRange(rowNumber, 1, 1, HEADERS[sheetName.toUpperCase()].length).getValues()[0];
+        const backupRow = backup.getLastRow() + 1;
+        backup.getRange(backupRow, 3).setNumberFormat('@');
+        backup.getRange(backupRow, 1, 1, 5).setValues([[sheetName,rowNumber,'2-5-26',new Date().toISOString(),JSON.stringify(testRow)]]);
+        targets.push(rowNumber);
+      });
+      SpreadsheetApp.flush();
+      targets.sort((a,b)=>b-a).forEach(row=>sheet.deleteRow(row));
+      summary[sheetName] = {resetSecondTestRows:targets.length};
+    });
+    console.log(JSON.stringify(summary));
+    return summary;
+  } finally { lock.releaseLock(); }
+}
+
+function verifyAuthorizedTestSubmissions() {
+  const allowed = {'2-5-25':'김과학','2-5-26':'이삼진'};
+  const result = {};
+  [SHEETS.PROGRESS, SHEETS.SUBMISSIONS].forEach(function(sheetName) {
+    const sheet = getSheet_(sheetName);
+    const count = sheet.getLastRow() - 1;
+    if (count < 1) { result[sheetName] = {}; return; }
+    const identifiers = sheet.getRange(2, 1, count, 4).getValues();
+    const stats = {};
+    identifiers.forEach(function(row, index) {
+      const key = studentKeyFromRow_(row);
+      if (!Object.prototype.hasOwnProperty.call(allowed,key)) return;
+      const rowNumber = index+2;
+      if (normalizeName_(sheet.getRange(rowNumber,5).getValue()) !== allowed[key]) return;
+      if (!stats[key]) stats[key] = {count:0,stringKeys:true,textFormat:true};
+      stats[key].count++;
+      stats[key].stringKeys = stats[key].stringKeys && typeof row[0] === 'string' && row[0] === key;
+      stats[key].textFormat = stats[key].textFormat && sheet.getRange(rowNumber,1).getNumberFormat() === '@';
+    });
+    result[sheetName] = stats;
+  });
+  console.log(JSON.stringify(result));
+  return result;
+}

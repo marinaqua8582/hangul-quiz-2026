@@ -77,7 +77,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
       if (json.ok === true || json.success === true) {
         setTestStatus('success');
-        setTestMessage('Google Apps Script 연결 및 Roster 옵션 조회에 성공했습니다.');
+        setTestMessage('Google Apps Script 연결 및 Roster 옵션 조회에 성공했습니다.' + (typeof json.version === 'string' ? ` (${json.version})` : ''));
       } else {
         throw new Error('API 응답이 성공 상태가 아닙니다.');
       }
