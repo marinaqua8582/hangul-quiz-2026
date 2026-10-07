@@ -50,9 +50,8 @@ Google Drive에서 새로운 **Google 스프레드시트**를 하나 생성합�
 * **E열**: `name` (이름, 예: `홍길동`)
 * **F열**: `active` (`TRUE` 또는 `FALSE`)
 
-### 2) `Progress` (진행 상황 자동저장)
-학생이 퀴즈를 풀며 「다음」 버튼을 누를 때마다 기록되는 시트입니다.  
-**동일 학생 중복 행이 생기지 않도록 `studentKey` 기준으로 항상 UPSERT(기존 행 덮어쓰기)됩니다.**
+### 2) `Progress` (이전 버전의 기록, 운영에서 사용하지 않음)
+중간 진행은 학생별 React state와 localStorage에만 저장합니다. `saveProgress`와 `loadProgress`는 비활성화되어 있으며 문제 이동 시 서버 저장을 요청하지 않습니다. 기존 Progress 데이터는 자동으로 삭제하지 않습니다.
 * **A열**: `studentKey`
 * **B열**: `grade`
 * **C열**: `class`
@@ -128,20 +127,9 @@ VITE_APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycb.../exec"
 
 보안을 위해 관리자 비밀번호 원문은 프론트엔드 코드에 절대 노출되지 않으며, Google Apps Script 서버 측에서 SHA-256 해시로 검증됩니다.
 
-### 기본 비밀번호
-ADMIN_PASSWORD_HASH를 설정한 뒤 관리자 비밀번호로 로그인합니다. 기본 비밀번호는 허용하지 않습니다.
+Apps Script의 프로젝트 설정 → 스크립트 속성에 `ADMIN_PASSWORD_HASH`를 설정합니다. 값은 관리자 비밀번호의 SHA-256 16진수 해시입니다. 기존 운영 속성은 유지합니다. 비밀번호 원문을 소스, GitHub 또는 실행 로그에 남기지 마세요. 기본 비밀번호는 없습니다.
 
-### 원하는 비밀번호로 변경하는 방법
-1. 스프레드시트의 Apps Script 편집기를 엽니다.
-2. `Code.gs` 하단의 `setAdminPassword` 함수를 활용합니다.
-3. 편집기 상단 실행 함수에 `setAdminPassword`를 직접 호출하거나 실행 창을 만듭니다.  
-   예:
-   ```javascript
-   function myPasswordSetup() {
-     setAdminPassword("선생님만의비밀번호1234");
-   }
-   ```
-4. `myPasswordSetup` 함수를 [실행]하면 `PropertiesService`에 암호화된 해시(`ADMIN_PASSWORD_HASH`)가 안전하게 영구 저장됩니다.
+프론트는 사용자가 입력한 비밀번호를 HTTPS로 `adminLogin`에 보내고 서버에서 해시를 비교합니다. 로그인 성공 후 관리자 토큰은 서버 캐시에 최대 6시간 유지됩니다.
 
 ---
 
@@ -181,9 +169,9 @@ git push -u origin main
 
 ## 9. 보안 및 데이터 무결성 설계 원칙
 
-1. **정답 비공개 원칙**: 20개 문항의 정답과 채점 로직은 Google Apps Script 서버 코드에만 존재합니다. 학생이 브라우저 개발자 도구(F12)나 JavaScript 번들을 열어보아도 정답을 확인할 수 없습니다.
+1. **서버 채점**: 학생 번들에서 정답 배열과 모의 채점을 제거했습니다. 정답과 채점 로직은 Apps Script 코드에만 존재합니다. 다만 이 저장소가 공개이면 서버 소스의 정답도 GitHub에서 볼 수 있으므로 시험 운영 시 저장소 공개 범위를 별도로 검토해야 합니다.
 2. **동시성 보호 (LockService)**: 수십 명의 학생이 동시에 제출하더라도 Google Apps Script의 `LockService`가 행 덮어쓰기 충돌을 방지합니다.
-3. **중복 행 생성 원천 방지 (UPSERT)**: `studentKey`(`학년-반-번호`)를 기준으로 Progress와 Submissions 시트를 갱신하므로 같은 학생의 행이 2줄 이상 중복 생성되지 않습니다.
+3. **문자열 키와 중복 제출 방지**: Submissions는 `학년-반-번호` 문자열을 기준으로 비교합니다. 날짜로 변환된 기존 키는 학년·반·번호 열과 날짜 값을 정규화해 조회합니다. 새 제출의 A열 셀은 먼저 일반 텍스트(`@`)로 설정하고 문자열을 씁니다. 이미 제출한 학생은 기존 결과를 반환합니다. 새 시트 생성 시 Roster/Progress/Submissions의 A열 전체를 텍스트로 설정하지만 기존 실제 학생 셀은 일괄 변경하지 않습니다.
 4. **재응시 및 중복 제출 차단**: 제출 완료(`isSubmitted=TRUE`)된 학생은 다시 로그인하더라도 문제 풀이 화면으로 진입할 수 없으며, 본인의 최종 결과 화면만 안전하게 다시 확인하게 됩니다.
 9. **Roster 기반 동적 드롭다운 (개인정보 보호)**: 학생 로그인 화면 진입 시 `getRosterOptions`를 호출하여 실제 Roster에 등록된 학년, 반, 번호만 동적으로 구성합니다. 학생들의 실명 목록은 일체 클라이언트로 내려보내지 않으며, 학생 본인이 이름을 직접 입력하여 인증받습니다.
 10. **브라우저 자동 번역 오작동 방지**: 모바일 크롬, 사파리 등의 자동 번역기가 「학년」을 「학과」 등으로 왜곡 번역하지 않도록 `translate="no"`, `notranslate`, `lang="ko"` 다중 보호 태그가 적용되어 있습니다.
