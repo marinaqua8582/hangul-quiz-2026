@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { ChevronLeft, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Question, StudentCredentials, FinalResult } from '../types/index.ts';
 import { QUIZ_QUESTIONS } from '../data/questions.ts';
@@ -30,6 +30,8 @@ export const QuizPage: React.FC<QuizPageProps> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const submissionLock = useRef(false);
 
   const currentQuestion: Question = QUIZ_QUESTIONS[currentIndex];
   const selectedAnswer = answers[currentQuestion.id] || '';
@@ -115,6 +117,13 @@ export const QuizPage: React.FC<QuizPageProps> = ({
 
   // Execute final submission (send all 20 answers to Apps Script submitQuiz)
   const handleConfirmSubmit = async () => {
+    if (submissionLock.current) return;
+    if (QUIZ_QUESTIONS.some(q => !answers[q.id])) {
+      setErrorMessage('20문항 모두 답을 선택해 주세요.');
+      setShowConfirmModal(false);
+      return;
+    }
+    submissionLock.current = true;
     setIsSubmitting(true);
     setErrorMessage('');
 
@@ -137,7 +146,14 @@ export const QuizPage: React.FC<QuizPageProps> = ({
         // Submission succeeded: clear localStorage progress for this student
         clearLocalProgress(studentKey);
         setShowConfirmModal(false);
-        onComplete(res.result);
+        onComplete({
+          ...res.result,
+          studentKey,
+          name: credentials.name.trim(),
+          grade: Number(credentials.grade),
+          classNum: Number(classVal),
+          number: Number(credentials.number),
+        });
       } else {
         setErrorMessage(res.error || res.message || '제출에 실패했습니다. 다시 시도해 주세요.');
         setShowConfirmModal(false);
@@ -147,6 +163,7 @@ export const QuizPage: React.FC<QuizPageProps> = ({
       setErrorMessage(`제출 오류: ${msg}`);
       setShowConfirmModal(false);
     } finally {
+      submissionLock.current = false;
       setIsSubmitting(false);
     }
   };

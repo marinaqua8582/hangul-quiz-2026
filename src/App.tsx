@@ -9,6 +9,7 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage.tsx';
 import { ResumeModal } from './components/ResumeModal.tsx';
 import { SettingsModal } from './components/SettingsModal.tsx';
 import { StudentCredentials, LoginResponse, FinalResult } from './types/index.ts';
+import { loginStudent } from './services/api.ts';
 import { getLocalProgress, clearLocalProgress } from './utils/quizStorage.ts';
 
 type AppScreen = 'home' | 'login' | 'quiz' | 'result' | 'admin-login' | 'admin-dashboard';
@@ -39,28 +40,26 @@ export default function App() {
   // Admin Token State
   const [adminToken, setAdminToken] = useState<string>('');
 
-  // Restore session on browser reload if student was mid-quiz
+  // Revalidate the student's server status before restoring a quiz after reload.
   useEffect(() => {
+    let active = true;
     try {
-      const savedSession = sessionStorage.getItem('CURRENT_QUIZ_STUDENT');
-      if (savedSession) {
-        const parsed = JSON.parse(savedSession);
-        if (parsed && parsed.studentKey && parsed.credentials) {
-          const localProgress = getLocalProgress(parsed.studentKey);
-          setCredentials(parsed.credentials);
-          setStudentKey(parsed.studentKey);
-          setQuizStartedAt(parsed.quizStartedAt || localProgress?.quizStartedAt || new Date().toISOString());
-
-          if (localProgress) {
-            setSavedAnswers(localProgress.answers || {});
-            setCurrentQuestionIndex(Math.max(0, (localProgress.currentQuestion || 1) - 1));
-          }
-          setCurrentScreen('quiz');
+      const raw = sessionStorage.getItem('CURRENT_QUIZ_STUDENT');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.credentials && parsed?.studentKey) {
+          setCurrentScreen('login');
+          loginStudent(parsed.credentials).then(response => {
+            if (!active) return;
+            if (response.success || response.ok) handleLoginSuccess(response, parsed.credentials);
+            else sessionStorage.removeItem('CURRENT_QUIZ_STUDENT');
+          }).catch(() => sessionStorage.removeItem('CURRENT_QUIZ_STUDENT'));
         }
       }
-    } catch (e) {
-      console.error('Failed to restore active quiz session:', e);
+    } catch {
+      sessionStorage.removeItem('CURRENT_QUIZ_STUDENT');
     }
+    return () => { active = false; };
   }, []);
 
   // Handle successful student verification from LoginPage
@@ -73,10 +72,22 @@ export default function App() {
     const isSubmitted = response.status === 'submitted' || response.isSubmitted;
 
     // 1. 이미 최종 제출한 학생인 경우 기존 결과 화면 표시 (재응시 불가)
-    if (isSubmitted && response.finalResult) {
+    if (isSubmitted) {
+      if (!response.finalResult) {
+        sessionStorage.removeItem('CURRENT_QUIZ_STUDENT');
+        setCurrentScreen('login');
+        return;
+      }
       clearLocalProgress(key);
       sessionStorage.removeItem('CURRENT_QUIZ_STUDENT');
-      setFinalResult(response.finalResult);
+      setFinalResult({
+        ...response.finalResult,
+        studentKey: key,
+        name: creds.name.trim(),
+        grade: Number(creds.grade),
+        classNum: Number(classVal),
+        number: Number(creds.number),
+      });
       setIsAlreadySubmittedNotice(true);
       setCurrentScreen('result');
       return;

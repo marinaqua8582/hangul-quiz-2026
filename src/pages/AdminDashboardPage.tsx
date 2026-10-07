@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LogOut, Printer, RefreshCw, ChevronDown, Users, BookOpen } from 'lucide-react';
 import { DashboardStudent } from '../types/index.ts';
 import { getDashboard } from '../services/api.ts';
@@ -16,8 +16,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ token, o
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
+  const requestSequence = useRef(0);
+
   const fetchDashboardData = async () => {
+    const requestId = ++requestSequence.current;
     setIsLoading(true);
+    setStudents([]);
+    setTotalCount(0);
     setErrorMessage('');
     try {
       const res = await getDashboard({
@@ -27,16 +32,18 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ token, o
         classNum: selectedClass,
       });
 
+      if (requestId !== requestSequence.current) return;
       if (res.ok || res.success) {
-        setStudents(res.students || []);
+        setStudents([...(res.students || [])].sort((a, b) => a.grade - b.grade || a.classNum - b.classNum || a.number - b.number));
         setTotalCount(res.totalCount !== undefined ? res.totalCount : (res.students || []).length);
       } else {
         setErrorMessage(res.error || res.message || '데이터를 불러오지 못했습니다.');
       }
     } catch (err: unknown) {
+      if (requestId !== requestSequence.current) return;
       setErrorMessage(err instanceof Error ? err.message : '통신 오류가 발생했습니다.');
     } finally {
-      setIsLoading(false);
+      if (requestId === requestSequence.current) setIsLoading(false);
     }
   };
 
@@ -45,7 +52,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ token, o
   }, [selectedGrade, selectedClass]);
 
   const handlePrint = () => {
-    window.print();
+    if (isSpecificClassSelected && !isLoading && !errorMessage) window.print();
   };
 
   const isSpecificClassSelected = selectedGrade !== 'all' && selectedClass !== 'all';
@@ -91,7 +98,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ token, o
             <button
               type="button"
               onClick={handlePrint}
-              disabled={isLoading || students.length === 0}
+              disabled={isLoading || !!errorMessage || !isSpecificClassSelected || students.length === 0}
               className="py-2 px-3.5 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 active:scale-[0.98] transition-all flex items-center gap-1.5 shadow-xs disabled:opacity-50"
             >
               <Printer className="w-3.5 h-3.5 text-slate-500" />
@@ -121,6 +128,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ token, o
                   onChange={(e) => {
                     const val = e.target.value === 'all' ? 'all' : Number(e.target.value);
                     setSelectedGrade(val);
+                    setSelectedClass('all');
                   }}
                   className="h-9 px-3 pr-7 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-800 appearance-none"
                 >
@@ -215,7 +223,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ token, o
               <tbody className="divide-y divide-slate-100 text-slate-800">
                 {students.map((st) => (
                   <tr
-                    key={st.studentKey}
+                    key={st.studentKey || `${st.grade}-${st.classNum}-${st.number}`}
                     className="hover:bg-slate-50/70 transition-colors page-break-inside-avoid"
                   >
                     {!isSpecificClassSelected && (

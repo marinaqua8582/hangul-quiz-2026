@@ -106,7 +106,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onBack, onLoginS
       </div>
 
       <div className="text-center text-[11px] text-slate-400 py-4">
-        * 기본 비밀번호: <code>hangul2026!</code> (Google Apps Script에서 변경 가능)
+        * 교사가 설정한 관리자 비밀번호를 입력하세요.
       </div>
     </div>
   );
