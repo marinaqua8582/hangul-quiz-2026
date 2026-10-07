@@ -41,7 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     const targetUrl = sanitizeScriptUrl(url);
     if (!targetUrl) {
       setTestStatus('error');
-      setTestMessage('URL을 입력해 주세요. 비어있으면 로컬 시뮬레이션 모드로 작동합니다.');
+      setTestMessage('URL을 입력해 주세요. 운영 API 설정이 필요합니다.');
       return;
     }
 
@@ -54,7 +54,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
-        body: JSON.stringify({ action: 'ping' }),
+        body: JSON.stringify({ action: 'getRosterOptions' }),
         redirect: 'follow',
       });
 
@@ -70,12 +70,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         json = {};
       }
 
-      if (json && (json.ok !== undefined || json.status !== undefined || json.service !== undefined || json.success !== undefined)) {
+      if (json.ok === true || json.success === true) {
         setTestStatus('success');
-        setTestMessage('Google Apps Script와 성공적으로 연결되었습니다!');
+        setTestMessage('Google Apps Script 연결 및 Roster 옵션 조회에 성공했습니다.');
       } else {
-        setTestStatus('success');
-        setTestMessage('응답을 수신했습니다 (정상 작동 중).');
+        throw new Error('API 응답이 성공 상태가 아닙니다.');
       }
     } catch (err: unknown) {
       setTestStatus('error');
@@ -113,7 +112,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             <>
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
-                <strong>로컬 시뮬레이션 모드:</strong> URL이 비어 있어 브라우저 로컬 저장소로 안전하게 작동 중입니다.
+                <strong>API 설정 필요:</strong> URL이 없어 로그인과 제출을 진행할 수 없습니다.
               </span>
             </>
           )}

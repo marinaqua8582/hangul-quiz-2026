@@ -61,4 +61,9 @@
     break-inside: avoid;
     page-break-inside: avoid;
   }
+
+  thead { display: table-header-group; }
+  table { width: 100%; }
+  .overflow-x-auto, .overflow-hidden { overflow: visible !important; }
+  #root > div { background: white !important; min-height: auto !important; }
 }

@@ -129,10 +129,10 @@ function doPost(e) {
         return handleLoginStudent(data);
 
       case 'loadProgress':
-        return handleLoadProgress(data);
+        return respondJSON({ ok: false, message: '진행 정보는 브라우저에만 저장됩니다.' });
 
       case 'saveProgress':
-        return handleSaveProgress(data);
+        return respondJSON({ ok: false, message: '진행 정보는 브라우저에만 저장됩니다.' });
 
       case 'submitQuiz':
         return handleSubmitQuiz(data);
@@ -364,46 +364,7 @@ function handleLoginStudent(data) {
     }
   }
 
-  // Progress 시트 확인: 진행 중인 퀴즈가 있는지 검사
-  var progSheet = ss.getSheetByName('Progress');
-  if (progSheet) {
-    var progData = progSheet.getDataRange().getValues();
-    for (var p = 1; p < progData.length; p++) {
-      var pKey = String(progData[p][0] || '').trim();
-      var pSubmitted = progData[p][9];
-      var isProgSubmitted = (pSubmitted === true || pSubmitted === 'TRUE' || pSubmitted === 'true');
-
-      if (pKey === studentKey && !isProgSubmitted) {
-        var answersJsonStr = (progData[p][5] || '{}').toString();
-        var currentQ = Number(progData[p][6]) || 1;
-        var startedAt = (progData[p][7] || '').toString();
-
-        var parsedAnswers = {};
-        try {
-          parsedAnswers = JSON.parse(answersJsonStr);
-        } catch (e) {
-          parsedAnswers = {};
-        }
-
-        return respondJSON({
-          success: true,
-          ok: true,
-          status: 'progress',
-          studentKey: studentKey,
-          name: name,
-          grade: grade,
-          class: classNum,
-          classNum: classNum,
-          number: number,
-          isSubmitted: false,
-          hasProgress: true,
-          currentQuestion: currentQ,
-          quizStartedAt: startedAt,
-          savedAnswers: parsedAnswers
-        });
-      }
-    }
-  }
+  // 진행 정보는 학생별 브라우저 저장소만 사용합니다.
 
   // 신규 응시 학생
   return respondJSON({
@@ -421,134 +382,6 @@ function handleLoginStudent(data) {
     currentQuestion: 1,
     savedAnswers: {}
   });
-}
-
-/**
- * 5-2. 진행 상황 조회 (loadProgress)
- */
-function handleLoadProgress(data) {
-  var studentKey = (data.studentKey || '').toString().trim();
-  if (!studentKey) {
-    return respondJSON({ ok: false, message: 'studentKey가 필요합니다.' });
-  }
-
-  var ss = getSpreadsheet();
-  var progSheet = ss.getSheetByName('Progress');
-  if (!progSheet) {
-    return respondJSON({ ok: false, message: 'Progress 시트가 없습니다.' });
-  }
-
-  var progData = progSheet.getDataRange().getValues();
-  for (var p = 1; p < progData.length; p++) {
-    if ((progData[p][0] || '').toString().trim() === studentKey) {
-      var answersJson = (progData[p][5] || '{}').toString();
-      var currentQ = Number(progData[p][6]) || 1;
-      var startedAt = (progData[p][7] || '').toString();
-      var isSubmitted = (progData[p][9] === true || progData[p][9] === 'TRUE');
-
-      var answers = {};
-      try { answers = JSON.parse(answersJson); } catch (e) {}
-
-      return respondJSON({
-        ok: true,
-        progress: {
-          studentKey: studentKey,
-          currentQuestion: currentQ,
-          quizStartedAt: startedAt,
-          answers: answers,
-          submitted: isSubmitted
-        }
-      });
-    }
-  }
-
-  return respondJSON({ ok: true, progress: null });
-}
-
-/**
- * 5-3. 진행 상황 자동 저장 (saveProgress) - LockService + studentKey 기준 엄격한 UPSERT
- */
-function handleSaveProgress(data) {
-  var lock = LockService.getScriptLock();
-  try {
-    // 10초 대기 락 획득
-    lock.waitLock(10000);
-  } catch (e) {
-    return respondJSON({ success: false, ok: false, error: '서버가 혼잡합니다. 잠시 후 다시 시도해 주세요.', message: '서버가 혼잡합니다. 잠시 후 다시 시도해 주세요.' });
-  }
-
-  try {
-    var studentKey = String(data.studentKey || '').trim();
-    var grade = String(data.grade !== undefined ? data.grade : '').trim();
-    var classNum = String(data.class !== undefined ? data.class : (data.classNum || '')).trim();
-    var number = String(data.number !== undefined ? data.number : '').trim();
-    var name = String(data.name || '').trim();
-
-    // answers 객체 또는 answersJson 문자열 모두 지원
-    var answersJson = '';
-    if (typeof data.answers === 'object' && data.answers !== null) {
-      answersJson = JSON.stringify(data.answers);
-    } else if (typeof data.answersJson === 'string') {
-      answersJson = data.answersJson;
-    } else if (typeof data.answers === 'string') {
-      answersJson = data.answers;
-    } else {
-      answersJson = JSON.stringify(data.answers || data.answersJson || {});
-    }
-
-    var currentQuestion = Number(data.currentQuestion) || 1;
-    var quizStartedAt = String(data.quizStartedAt || '');
-    var updatedAt = new Date().toISOString();
-
-    if (!studentKey) {
-      lock.releaseLock();
-      return respondJSON({ success: false, ok: false, error: 'studentKey가 필요합니다.', message: 'studentKey가 필요합니다.' });
-    }
-
-    var ss = getSpreadsheet();
-    var sheet = getOrCreateSheet(ss, 'Progress');
-    var dataRange = sheet.getDataRange();
-    var values = dataRange.getValues();
-
-    var targetRowIndex = -1;
-    for (var i = 1; i < values.length; i++) {
-      if (String(values[i][0] || '').trim() === studentKey) {
-        targetRowIndex = i + 1; // 1-indexed 스프레드시트 행
-        break;
-      }
-    }
-
-    // 컬럼 순서:
-    // studentKey(1), grade(2), class(3), number(4), name(5), answersJson(6), currentQuestion(7), quizStartedAt(8), updatedAt(9), submitted(10)
-    var rowValues = [
-      studentKey,
-      grade,
-      classNum,
-      number,
-      name,
-      answersJson,
-      currentQuestion,
-      quizStartedAt,
-      updatedAt,
-      false
-    ];
-
-    if (targetRowIndex > 0) {
-      // 기존 행 덮어쓰기 (UPSERT - 업데이트)
-      sheet.getRange(targetRowIndex, 1, 1, rowValues.length).setValues([rowValues]);
-    } else {
-      // 새 행 추가 (UPSERT - 인서트)
-      sheet.appendRow(rowValues);
-    }
-
-    SpreadsheetApp.flush();
-    lock.releaseLock();
-
-    return respondJSON({ success: true, ok: true, message: '저장 완료', updatedAt: updatedAt });
-  } catch (err) {
-    lock.releaseLock();
-    return respondJSON({ success: false, ok: false, error: '진행 상황 저장 중 오류: ' + err.toString(), message: '진행 상황 저장 중 오류: ' + err.toString() });
-  }
 }
 
 // 20문항 A/B/C/D 및 텍스트 매핑 테이블 (서버 채점용)
@@ -595,6 +428,23 @@ function handleSubmitQuiz(data) {
       return respondJSON({ success: false, ok: false, error: 'studentKey가 필요합니다.', message: 'studentKey가 필요합니다.' });
     }
 
+    var expectedKey = grade + '-' + classNum + '-' + number;
+    var roster = getSpreadsheet().getSheetByName('Roster');
+    if (studentKey !== expectedKey || !roster) {
+      lock.releaseLock();
+      return respondJSON({ ok: false, message: '학생 정보를 다시 확인해 주세요.' });
+    }
+    var rosterRows = roster.getDataRange().getValues();
+    var verified = rosterRows.slice(1).some(function(row) {
+      return String(row[1]).trim() === grade && String(row[2]).trim() === classNum &&
+        String(row[3]).trim() === number && String(row[4]).trim() === name &&
+        (row[5] === true || String(row[5]).toLowerCase() === 'true');
+    });
+    if (!verified) {
+      lock.releaseLock();
+      return respondJSON({ ok: false, message: '학생 정보를 다시 확인해 주세요.' });
+    }
+
     var ss = getSpreadsheet();
     var subSheet = getOrCreateSheet(ss, 'Submissions');
     var subData = subSheet.getDataRange().getValues();
@@ -637,6 +487,19 @@ function handleSubmitQuiz(data) {
       studentAnswers = {};
     }
 
+    if (!studentAnswers || typeof studentAnswers !== 'object' || Array.isArray(studentAnswers) ||
+        Object.keys(studentAnswers).length !== 20) {
+      lock.releaseLock();
+      return respondJSON({ ok: false, message: '20문항 모두 답을 선택해 주세요.' });
+    }
+    for (var questionId = 1; questionId <= 20; questionId++) {
+      var allowed = questionId === 2 || questionId === 3 ? ['O', 'X'] :
+        ([6, 7, 12].indexOf(questionId) >= 0 ? ['A', 'B'] : ['A', 'B', 'C', 'D']);
+      if (allowed.indexOf(studentAnswers[questionId]) < 0) {
+        lock.releaseLock();
+        return respondJSON({ ok: false, message: '유효하지 않은 답안입니다.' });
+      }
+    }
     var correctCount = 0;
     for (var qId = 1; qId <= 20; qId++) {
       var studentAns = String(studentAnswers[qId] || '').trim();
@@ -678,19 +541,6 @@ function handleSubmitQuiz(data) {
     ];
     subSheet.appendRow(subRow);
 
-    // 5. Progress 시트의 submitted 플래그를 TRUE로 업데이트
-    var progSheet = ss.getSheetByName('Progress');
-    if (progSheet) {
-      var pValues = progSheet.getDataRange().getValues();
-      for (var p = 1; p < pValues.length; p++) {
-        if (String(pValues[p][0] || '').trim() === studentKey) {
-          progSheet.getRange(p + 1, 10).setValue(true); // submitted 열
-          progSheet.getRange(p + 1, 9).setValue(submittedAt); // updatedAt 열
-          break;
-        }
-      }
-    }
-
     SpreadsheetApp.flush();
     lock.releaseLock();
 
@@ -729,9 +579,6 @@ function handleAdminLogin(data) {
   if (savedHash) {
     var inputHash = computeSha256(password);
     isValid = (inputHash === savedHash);
-  } else {
-    // 비밀번호 해시가 설정되지 않은 경우 기본 비밀번호 'hangul2026!' 허용
-    isValid = (password === 'hangul2026!' || password === 'admin1234');
   }
 
   if (isValid) {
@@ -753,13 +600,12 @@ function handleGetDashboard(data) {
   var props = PropertiesService.getScriptProperties();
 
   var authorized = false;
-  if (token && props.getProperty(token)) {
-    authorized = true;
+  if (token && token.indexOf('admin_session_') === 0 && props.getProperty(token)) {
+    var issuedAt = Number(props.getProperty(token));
+    authorized = issuedAt > 0 && Date.now() - issuedAt < 24 * 60 * 60 * 1000;
   } else if (password) {
     var savedHash = props.getProperty('ADMIN_PASSWORD_HASH');
     if (savedHash && computeSha256(password) === savedHash) {
-      authorized = true;
-    } else if (!savedHash && (password === 'hangul2026!' || password === 'admin1234')) {
       authorized = true;
     }
   }
@@ -850,7 +696,7 @@ function computeSha256(text) {
 function setAdminPassword(plainPassword) {
   var hash = computeSha256(plainPassword);
   PropertiesService.getScriptProperties().setProperty('ADMIN_PASSWORD_HASH', hash);
-  Logger.log('관리자 비밀번호 해시 설정 완료: ' + hash);
+  Logger.log('관리자 비밀번호 해시 설정 완료');
 }
 
 /**
@@ -864,13 +710,6 @@ function setupSheets() {
   var rosterSheet = getOrCreateSheet(ss, 'Roster');
   if (rosterSheet.getLastRow() === 0) {
     rosterSheet.appendRow(['studentKey', 'grade', 'class', 'number', 'name', 'active']);
-    // 샘플 테스트 데이터 추가
-    rosterSheet.appendRow(['1-1-1', 1, 1, 1, '김민준', true]);
-    rosterSheet.appendRow(['1-1-2', 1, 1, 2, '이서연', true]);
-    rosterSheet.appendRow(['2-3-15', 2, 3, 15, '홍길동', true]);
-    rosterSheet.appendRow(['2-3-16', 2, 3, 16, '김한글', true]);
-    rosterSheet.appendRow(['3-2-7', 3, 2, 7, '박세종', true]);
-    
     // 헤더 서식
     var rHeader = rosterSheet.getRange(1, 1, 1, 6);
     rHeader.setBackground('#1e3a8a').setFontColor('#ffffff').setFontWeight('bold');
