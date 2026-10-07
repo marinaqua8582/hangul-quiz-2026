@@ -48,8 +48,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({ token, o
   };
 
   useEffect(() => {
+    if (!token.trim()) {
+      setIsLoading(false);
+      setErrorMessage('관리자 인증이 필요합니다. 다시 로그인해 주세요.');
+      return;
+    }
     fetchDashboardData();
-  }, [selectedGrade, selectedClass]);
+    return () => { requestSequence.current++; };
+  }, [token, selectedGrade, selectedClass]);
 
   const handlePrint = () => {
     if (isSpecificClassSelected && !isLoading && !errorMessage) window.print();

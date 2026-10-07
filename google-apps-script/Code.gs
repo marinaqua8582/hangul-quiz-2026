@@ -192,9 +192,18 @@ function doPost(e) {
         result = adminLogin_(request);
         break;
 
-      case 'getDashboard':
-        result = getDashboard_(request);
+      case 'getDashboard': {
+        const trace = /^[a-zA-Z0-9-]{1,80}$/.test(String(request.requestId || '')) ? String(request.requestId) : 'none';
+        console.log('[Dashboard] stage=arrived tokenPresent=' + Boolean(request.token) + ' request=' + trace);
+        try {
+          result = getDashboard_(request);
+          console.log('[Dashboard] stage=complete request=' + trace);
+        } catch (dashboardError) {
+          console.log('[Dashboard] stage=failed request=' + trace);
+          throw dashboardError;
+        }
         break;
+      }
 
       case 'getRosterOptions':
         result = getRosterOptions_();
@@ -668,7 +677,9 @@ function adminLogin_(request) {
  ******************************************************/
 
 function getDashboard_(request) {
+  console.log('[Dashboard] stage=start');
   validateAdminToken_(request.token);
+  console.log('[Dashboard] stage=authorized');
 
   const filterGrade =
     request.grade &&
@@ -690,6 +701,7 @@ function getDashboard_(request) {
 
   if (values.length <= 1) {
     return {
+      dashboardVersion: '2026-10-08-dashboard-v1',
       participantCount: 0,
       students: [],
     };
@@ -752,7 +764,8 @@ function getDashboard_(request) {
   });
 
   return {
-    participantCount: rows.length,
+    dashboardVersion: '2026-10-08-dashboard-v1',
+      participantCount: rows.length,
     students: rows,
   };
 }
