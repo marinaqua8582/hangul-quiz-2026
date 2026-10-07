@@ -1,0 +1,7 @@
+{
+  "name": "2026 한글날 퀴즈 - 훈민정음 반포 580돌",
+  "description": "중학교 학생들을 위한 2026년 한글날 기념 퀴즈 웹앱 (훈민정음 반포 580돌). 모바일 최적화, 자동 진행 저장 및 Google Sheets 연동 지원.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
