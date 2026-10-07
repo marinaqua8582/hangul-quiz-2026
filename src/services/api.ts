@@ -112,7 +112,7 @@ async function callAppsScript<T extends { success?: boolean; ok?: boolean; error
       },
       body: JSON.stringify(isDashboard ? { ...payload, requestId: `${requestId}-${attempt}` } : payload),
       redirect: 'follow',
-      ...(isDashboard ? { cache: 'no-store' as const } : {}),
+      cache: 'no-store',
     });
     if (isDashboard) console.log(`[AppsScript] action=getDashboard request=${requestId} tokenPresent=${!!payload.token}`);
     response = await send(1);
