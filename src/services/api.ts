@@ -192,6 +192,7 @@ export async function loginStudent(credentials: StudentCredentials): Promise<Log
       }
 
       const submitted = response.status === 'submitted' || response.isSubmitted === true;
+      console.log('[Quiz API schema]', JSON.stringify({ fields: Object.keys(response), status: response.status, hasResult: !!response.result, hasFinalResult: !!response.finalResult }));
       const result = response.finalResult || response.result;
       if (submitted && !result) throw new Error('기존 제출 결과를 확인할 수 없습니다. 교사에게 문의하세요.');
       return {
@@ -390,3 +391,4 @@ export async function getDashboard(params: {
     }
   
 }
+
