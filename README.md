@@ -129,7 +129,7 @@ VITE_APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycb.../exec"
 보안을 위해 관리자 비밀번호 원문은 프론트엔드 코드에 절대 노출되지 않으며, Google Apps Script 서버 측에서 SHA-256 해시로 검증됩니다.
 
 ### 기본 비밀번호
-초기 설정 상태에서는 기본 비밀번호 `hangul2026!`으로 로그인할 수 있습니다.
+ADMIN_PASSWORD_HASH를 설정한 뒤 관리자 비밀번호로 로그인합니다. 기본 비밀번호는 허용하지 않습니다.
 
 ### 원하는 비밀번호로 변경하는 방법
 1. 스프레드시트의 Apps Script 편집기를 엽니다.

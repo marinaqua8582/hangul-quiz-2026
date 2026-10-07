@@ -58,6 +58,7 @@ export function sanitizeScriptUrl(rawUrl: string): string {
     }
   }
 
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) return '';
   return url.trim();
 }
 
@@ -155,8 +156,8 @@ export async function getRosterOptions(): Promise<RosterOptions> {
         grades: [],
         classesByGrade: {},
         numbersByGradeClass: {},
-        error: '학생 명단을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
-        message: '학생 명단을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        error: err instanceof Error ? err.message : '학생 명단을 불러오지 못했습니다.',
+        message: err instanceof Error ? err.message : '학생 명단을 불러오지 못했습니다.',
       };
     }
   
@@ -192,7 +193,6 @@ export async function loginStudent(credentials: StudentCredentials): Promise<Log
       }
 
       const submitted = response.status === 'submitted' || response.isSubmitted === true;
-      console.log('[Quiz API schema]', JSON.stringify({ fields: Object.keys(response), status: response.status, hasResult: !!response.result, hasFinalResult: !!response.finalResult }));
       const result = response.finalResult || response.result;
       if (submitted && !result) throw new Error('기존 제출 결과를 확인할 수 없습니다. 교사에게 문의하세요.');
       return {
@@ -391,4 +391,3 @@ export async function getDashboard(params: {
     }
   
 }
-

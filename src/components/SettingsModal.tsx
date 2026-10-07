@@ -23,6 +23,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   if (!isOpen) return null;
 
   const handleSave = () => {
+    if (url.trim() && !sanitizeScriptUrl(url)) {
+      setTestStatus('error');
+      setTestMessage('https://script.google.com/macros/s/배포ID/exec 형식의 URL을 입력하세요.');
+      return;
+    }
     setCustomScriptUrl(url);
     setUrl(getScriptUrl());
     onClose();
